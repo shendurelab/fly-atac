@@ -12,7 +12,7 @@ python sc_atac_fastq2bam.py -R1 READ1 -R2 READ2 -O OUTDIR -P PREFIX -G GENOME
 Use sc_atac_library_deconvoluter to split out reads associated with each experiment.  
 e.g.
 ```bash
-cat 2to4.indextable.txt 6to8.indextable.txt 10to12.indextable.txt | sed -i 's/_P*//g > master.indextable.txt'
+cat 2to4.indextable.txt 6to8.indextable.txt 10to12.indextable.txt | sed -i 's/_P*//g' > master.indextable.txt'
 bash sc_atac_library_deconvoluter [Input Bam file] master.indextable.txt [Output prefix] [Output extension, e.g. '.nodpus.bam']
 ```
 

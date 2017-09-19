@@ -21,7 +21,7 @@ bash sc_atac_library_deconvoluter [Input Bam file] master.indextable.txt [Output
 Wrapper script to count reads, call cells and generate some quick diagnostic plots and then count reads overlapping defined windows for each cell barcode.  
 e.g.
 ```bash
-python sc_atac_bame.matrix.py -B BAMFILE -I master.indextable.txt -O OUTDIR -P PREFIX -C READCUTOFF -W WINDOWBED
+python sc_atac_bam2matrix.py -B BAMFILE -I master.indextable.txt -O OUTDIR -P PREFIX -C READCUTOFF -W WINDOWBED
 ```
 
 

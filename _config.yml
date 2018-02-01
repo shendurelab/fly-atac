@@ -18,8 +18,8 @@ email: shendure@uw.edu
 description: > # this means to ignore newlines until "baseurl:"
   Cell Atlas of the Developing Fly -  Chromatin accessibility in developing Drosophila melanogaster at single cell resolution
 #baseurl: "/single-cell-fly"
-baseurl: "/content/members/cusanovich/fly_atlas_website"
-url: "http://krishna.gs.washington.edu" # the base hostname & protocol for your site, e.g. http://example.com
+baseurl: "/Fly-sciATAC"
+url: "https://shendurelab.github.io" # the base hostname & protocol for your site, e.g. http://example.com
 
 
 # Build settings

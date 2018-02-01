@@ -1,0 +1,968 @@
+---
+layout: vanilla
+permalink: /docs/
+description: "Data for the Cell Atlas of the Developing Fly."
+modified: 2018-01-16
+tags: [fly, data, atlas, analysis]
+---
+<!DOCTYPE html>
+<html lang= "{{ page.lang | default: site.lang | default: "en" }}">
+
+  {% include head.html %}
+
+  <!-- See here for how to use the TOC control:
+  https://afeld.github.io/bootstrap-toc/ -->
+  <body  data-spy= "scroll" data-target= "#toc">
+    {% include header.html %}
+
+
+    <div class="container">
+      <div class= "row">
+        <!-- sidebar, which will move to the top on a small screen -->
+        <div class= "col-sm-4 sidenav">
+          <nav id= "toc" data-spy= "affix" data-toggle= "toc"></nav>
+        </div>
+        <!-- main content area -->
+        <div class= "col-sm-8">
+
+<h2 id="introduction">Introduction</h2>
+
+<p>This notebook will walk you through some of the analyses presented in Cusanovich <em>et. al</em> (<a href="https://www.biorxiv.org/content/early/2017/07/20/166066">bioRxiv 2017</a>) for working with sci-ATAC-seq data from developing Drosophila melanogaster embryos. 
+<br /> The tutorial is broken into the following sections:</p>
+
+<ol>
+  <li>Using latent semantic indexing (‘LSI’) to identify clades of cells with similar chromatin accessibility profiles (<a href="#usecase1">jump to section</a>)</li>
+  <li>Using t-SNE to identify finer-scale structure (<a href="#usecase2">jump to section</a>)</li>
+  <li>Identifying differentially accessible sites between clusters of cells (<a href="#usecase3">jump to section</a>)</li>
+  <li>Arranging cells along developmental trajectories with “pseudotemporal ordering” (<a href="#usecase4">jump to section</a>)</li>
+</ol>
+
+<h2 id="installation">Installation</h2>
+<h3 id="required-r-packages">Required R Packages</h3>
+<ul>
+  <li>Matrix</li>
+  <li>proxy</li>
+  <li>gplots</li>
+  <li>Rtsne</li>
+  <li>densityClust (from here https://github.com/Xiaojieqiu/densityClust)</li>
+  <li>DDRTree (version 0.1.4)</li>
+  <li>monocle (version 2.5.3)</li>
+  <li>irlba (version 1.0.3)</li>
+</ul>
+
+<p>It is important that the correct version of monocle, DDRTree and irlba are installed. Other versions may produce different results. irlba v1.0.3 was used to generate the figures in the manuscript that are relevant to use cases 1 &amp; 2, while monocle v2.5.3 and DDRTree are the versions that were used for the trajectories presented in the paper. For the first two use cases, we will install the legacy version of irlba (1.0.3) and for the second two we will detach irlba and then load monocle 2.5.3 and DDRTree 0.1.4. To install these packages, open a command line and run:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash">curl -O https://cran.r-project.org/src/contrib/Archive/irlba/irlba_1.0.3.tar.gz
+mkdir ./old_irlba
+R CMD INSTALL -l ./old_irlba irlba_1.0.3.tar.gz
+curl -O http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/monocle_2.5.3.tar.gz
+R CMD INSTALL monocle_2.5.3.tar.gz
+curl -O https://cran.rstudio.com/src/contrib/Archive/DDRTree/DDRTree_0.1.4.tar.gz
+R CMD INSTALL DDRTree_0.1.4.tar.gz</code></pre></figure>
+
+<p>We can then open R and start loading packages.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">suppressPackageStartupMessages</span><span class="p">({</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">Matrix</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">proxy</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">gplots</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">Rtsne</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">densityClust</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">irlba</span><span class="p">,</span><span class="n">lib.loc</span><span class="o">=</span><span class="s2">"./old_irlba/"</span><span class="p">)</span><span class="w">
+    </span><span class="p">})</span><span class="w">
+
+
+    </span><span class="n">sessionInfo</span><span class="p">()</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>R version 3.2.1 (2015-06-18)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+Running under: CentOS release 6.9 (Final)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+[1] irlba_1.0.3      densityClust_0.3 Rtsne_0.13       gplots_3.0.1    
+[5] proxy_0.4-16     Matrix_1.2-10   
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.11        magrittr_1.5        uuid_0.1-2         
+ [4] lattice_0.20-35     R6_2.2.2            stringr_1.2.0      
+ [7] caTools_1.17.1      tools_3.2.1         grid_3.2.1         
+[10] KernSmooth_2.23-15  gtools_3.5.0        digest_0.6.12      
+[13] crayon_1.3.2        IRdisplay_0.4.4     repr_0.12.0        
+[16] bitops_1.0-6        IRkernel_0.8.6.9000 evaluate_0.10.1    
+[19] pbdZMQ_0.2-6        gdata_2.18.0        stringi_1.1.5      
+[22] jsonlite_1.5       
+</code></pre>
+</div>
+
+<hr />
+<p><a id="usecase1"></a></p>
+<h2 id="use-case-1-id-clades-with-lsi">Use case 1: ID clades with ‘LSI’</h2>
+
+<p>We have found it convenient to store the data as a sparse, binary matrix of genomic loci x cells. Below we will walk you through an analysis where individual cells have been scored for insertions in 2kb windows throughout the genome. Note that if you want to go back to the raw sequencing data (FASTQ files), they are available at the Gene Expression Omnibus under accession code <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">GSE101581</a>. We have made tools for manipulating these files available on <a href="https://github.com/shendurelab/Fly-sciATAC">github</a>. Alternatively, we have a great number of resources for interacting with the data at our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>.</p>
+
+<p>First, we need to download the binary matrix and load it into R.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
+    </span><span class="n">flies_6to8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">)</span></code></pre></figure>
+
+<p>After filtering out 2kb windows that intersect with ENCODE-defined blacklist regions, we end up with 83,290 distinct 2kb windows in the drosophila genome and we have data from 7,880 cells at the 6-8 hour time point.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="nf">dim</span><span class="p">(</span><span class="n">flies_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">flies_6to8</span><span class="p">[</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">,</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">]</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>83290
+7880
+
+
+2 x 2 sparse Matrix of class "dgCMatrix"
+                AGCGATAGAACGAATTCGAGAACCGGAGCCTATCCT
+chr2L_0_2000                                       .
+chr2L_2000_4000                                    .
+                AGCGATAGAACGAATTCGAGTCATAGCCGTACTGAC
+chr2L_0_2000                                       .
+chr2L_2000_4000                                    .
+</code></pre>
+</div>
+
+<p>Let’s collect some info about the frequency of insertion in individual windows and the variety of windows observed in individual cells. We can see that sites are observed in as many as 6,322 cells (80%), but are roughly normally distributed (with a long lower tail) on a log scale with a median of 330 cells having an insertion in each site.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rowSums</span><span class="p">(</span><span class="n">flies_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">4</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">4</span><span class="p">)</span><span class="w">
+    </span><span class="n">hist</span><span class="p">(</span><span class="n">log10</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">),</span><span class="n">main</span><span class="o">=</span><span class="s2">"No. of Cells Each Site is Observed In"</span><span class="p">,</span><span class="n">breaks</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="n">log10</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">[</span><span class="n">order</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">,</span><span class="n">decreasing</span><span class="o">=</span><span class="nb">T</span><span class="p">)[</span><span class="m">20000</span><span class="p">]]),</span><span class="n">lwd</span><span class="o">=</span><span class="m">2</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="s2">"indianred"</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_9_0.png" style="max-width: 700px;" /></p>
+
+<p>Now let’s only retain the most commonly used sites (top 20,000 here). Looking at the distribution of how many of these top 20,000 sites each cell covers, we can again see that the distribution is rougly log-normal (with a long lower tail) with a median of 3,751 windows covered by each cell.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">flies_6to8</span><span class="p">[</span><span class="n">which</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">num_cells_ncounted</span><span class="p">[</span><span class="n">order</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">,</span><span class="n">decreasing</span><span class="o">=</span><span class="nb">T</span><span class="p">)[</span><span class="m">20000</span><span class="p">]]),]</span><span class="w">
+    </span><span class="n">new_counts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">colSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w">
+    </span><span class="n">hist</span><span class="p">(</span><span class="n">log10</span><span class="p">(</span><span class="n">new_counts</span><span class="p">),</span><span class="n">main</span><span class="o">=</span><span class="s2">"Number of Sites Each Cell Uses"</span><span class="p">,</span><span class="n">breaks</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="n">log10</span><span class="p">(</span><span class="n">quantile</span><span class="p">(</span><span class="n">new_counts</span><span class="p">,</span><span class="n">probs</span><span class="o">=</span><span class="m">0.1</span><span class="p">)),</span><span class="n">lwd</span><span class="o">=</span><span class="m">2</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="s2">"indianred"</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_11_0.png" style="max-width: 700px;" /></p>
+
+<p>Before transforming the data, we just filter out the lowest 10% of cells (in terms of site coverage) and ensure that there are now empty sites.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ncounts</span><span class="p">[,</span><span class="n">new_counts</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">quantile</span><span class="p">(</span><span class="n">new_counts</span><span class="p">,</span><span class="n">probs</span><span class="o">=</span><span class="m">0.1</span><span class="p">)]</span><span class="w">
+    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ncounts</span><span class="p">[</span><span class="n">rowSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">0</span><span class="p">,]</span></code></pre></figure>
+
+<p>We can now transform the data using TF-IDF and then generate a lower dimensional representation of the data with truncated SVD (these are the two primary steps of LSI).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">nfreqs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Matrix</span><span class="o">::</span><span class="n">colSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">))</span><span class="w">
+    </span><span class="n">idf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as</span><span class="p">(</span><span class="nf">log</span><span class="p">(</span><span class="m">1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ncol</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Matrix</span><span class="o">::</span><span class="n">rowSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)),</span><span class="w"> </span><span class="s2">"sparseVector"</span><span class="p">)</span><span class="w">
+    </span><span class="n">tf_idf_counts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as</span><span class="p">(</span><span class="n">Diagonal</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">as.vector</span><span class="p">(</span><span class="n">idf</span><span class="p">)),</span><span class="w"> </span><span class="s2">"sparseMatrix"</span><span class="p">)</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">nfreqs</span></code></pre></figure>
+
+<p>Here, we only retain components 2-6 (component 1 is highly correlated with read depth) and truncate the distribution of LSI values at +/-1.5.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="c1">#This step can take a minute
+</span><span class="w">    </span><span class="n">set.seed</span><span class="p">(</span><span class="m">0</span><span class="p">)</span><span class="w"> </span><span class="c1">#For reproducibility
+</span><span class="w">    </span><span class="n">SVD</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">irlba</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">,</span><span class="w"> </span><span class="m">6</span><span class="p">,</span><span class="w"> </span><span class="m">6</span><span class="p">)</span><span class="w">
+    </span><span class="n">sk_diag</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matrix</span><span class="p">(</span><span class="m">0</span><span class="p">,</span><span class="w"> </span><span class="n">nrow</span><span class="o">=</span><span class="m">6</span><span class="p">,</span><span class="w"> </span><span class="n">ncol</span><span class="o">=</span><span class="m">6</span><span class="p">)</span><span class="w">
+    </span><span class="n">diag</span><span class="p">(</span><span class="n">sk_diag</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SVD</span><span class="o">$</span><span class="n">d</span><span class="w">
+    </span><span class="n">sk_diag</span><span class="p">[</span><span class="m">1</span><span class="p">,</span><span class="m">1</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0</span><span class="w">
+    
+    </span><span class="n">LSI_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">sk_diag</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">SVD</span><span class="o">$</span><span class="n">v</span><span class="p">))</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">SVD</span><span class="o">$</span><span class="n">u</span><span class="p">))</span><span class="w">
+    </span><span class="n">LSI_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">scale</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">LSI_out</span><span class="p">)))</span><span class="w">
+    </span><span class="n">LSI_out</span><span class="p">[</span><span class="n">LSI_out</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">1.5</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1.5</span><span class="w">
+    </span><span class="n">LSI_out</span><span class="p">[</span><span class="n">LSI_out</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="m">-1.5</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">-1.5</span></code></pre></figure>
+
+<p>Next, we generate some info about the dendrograms that will be used for plotting the heatmap.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="c1">#This step can take a minute too
+</span><span class="w">    </span><span class="n">hclust_cells</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hclust</span><span class="p">(</span><span class="n">proxy</span><span class="o">::</span><span class="n">dist</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">sk_diag</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">SVD</span><span class="o">$</span><span class="n">v</span><span class="p">)),</span><span class="w"> </span><span class="n">method</span><span class="o">=</span><span class="s2">"cosine"</span><span class="p">),</span><span class="w"> </span><span class="n">method</span><span class="o">=</span><span class="s2">"ward.D2"</span><span class="p">)</span><span class="w">
+    </span><span class="n">hclust_genes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hclust</span><span class="p">(</span><span class="n">proxy</span><span class="o">::</span><span class="n">dist</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">sk_diag</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">SVD</span><span class="o">$</span><span class="n">u</span><span class="p">)),</span><span class="w"> </span><span class="n">method</span><span class="o">=</span><span class="s2">"cosine"</span><span class="p">),</span><span class="w"> </span><span class="n">method</span><span class="o">=</span><span class="s2">"ward.D2"</span><span class="p">)</span><span class="w">
+    
+    </span><span class="n">color_pal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="s2">"#1F78B4"</span><span class="p">,</span><span class="s2">"#FFD700"</span><span class="p">,</span><span class="s2">"#60CC52"</span><span class="p">,</span><span class="s2">"#E31A1C"</span><span class="p">)</span><span class="w">
+    </span><span class="n">hmcols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">colorpanel</span><span class="p">(</span><span class="m">100</span><span class="p">,</span><span class="w"> </span><span class="s2">"steelblue"</span><span class="p">,</span><span class="w"> </span><span class="s2">"white"</span><span class="p">,</span><span class="w"> </span><span class="s2">"tomato"</span><span class="p">)</span><span class="w">
+    </span><span class="n">cells_tree_cut</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cutree</span><span class="p">(</span><span class="n">hclust_cells</span><span class="p">,</span><span class="w"> </span><span class="m">4</span><span class="p">)</span><span class="w">
+    </span><span class="n">lsi_cells</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cbind</span><span class="p">(</span><span class="n">colnames</span><span class="p">(</span><span class="n">ncounts</span><span class="p">),</span><span class="n">cells_tree_cut</span><span class="p">)</span></code></pre></figure>
+
+<p>Finally, we can generate a bi-clustered heatmap showing how cells and sites are related.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">4</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">6</span><span class="p">)</span><span class="w">
+    </span><span class="n">heatmap.2</span><span class="p">(</span><span class="n">LSI_out</span><span class="p">,</span><span class="w"> 
+              </span><span class="n">col</span><span class="o">=</span><span class="n">hmcols</span><span class="p">,</span><span class="w">
+              </span><span class="n">ColSideColors</span><span class="o">=</span><span class="n">color_pal</span><span class="p">[</span><span class="n">as.factor</span><span class="p">(</span><span class="n">cells_tree_cut</span><span class="p">)],</span><span class="w">
+              </span><span class="c1">#RowSideColors=color_pal[as.factor(genes_tree_cut)],
+</span><span class="w">              </span><span class="n">Rowv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as.dendrogram</span><span class="p">(</span><span class="n">hclust_genes</span><span class="p">),</span><span class="w"> </span><span class="n">Colv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as.dendrogram</span><span class="p">(</span><span class="n">hclust_cells</span><span class="p">),</span><span class="w">
+              </span><span class="n">labRow</span><span class="o">=</span><span class="kc">FALSE</span><span class="p">,</span><span class="w"> </span><span class="n">labCol</span><span class="o">=</span><span class="kc">FALSE</span><span class="p">,</span><span class="w"> </span><span class="n">trace</span><span class="o">=</span><span class="s2">"none"</span><span class="p">,</span><span class="w">  </span><span class="n">scale</span><span class="o">=</span><span class="s2">"none"</span><span class="p">,</span><span class="w">
+              </span><span class="n">useRaster</span><span class="o">=</span><span class="kc">TRUE</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_21_0.png" style="max-width: 700px;" /></p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rm</span><span class="p">(</span><span class="n">flies_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">nfreqs</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">SVD</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">LSI_out</span><span class="p">)</span></code></pre></figure>
+
+<hr />
+<p><a id="usecase2"></a></p>
+<h2 id="use-case-2-re-cluster-cells-with-t-sne">Use case 2: Re-cluster cells with t-SNE</h2>
+
+<p>Having identified large clades of cells that were consistent with the development of germ layers during embryogenesis, we were able to identify peaks of chromatin accessibility in each clade after “<em>in silico</em> sorting” the cells assigned to each cluster. We next sought to robustly identify smaller clusters of cells that might be more consistent with individual cell types so that we could learn about the individual regulatory elements that govern distinct cell states. To do so, we generated a master list of summits of accessibiity identified in each of the clades across the three time points and then created a matrix of sites by cells (similar to the last use case).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.summitmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.summitmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
+    </span><span class="n">fly_summits_6to8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"6to8.summitmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
+    </span><span class="nf">dim</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">fly_summits_6to8</span><span class="p">[</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">,</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">]</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>53133
+7880
+
+
+2 x 2 sparse Matrix of class "dgCMatrix"
+                AGCGATAGAACGAATTCGAGAACCGGAGCCTATCCT
+chr2L_5543_5980                                    .
+chr2L_6666_6881                                    .
+                AGCGATAGAACGAATTCGAGTCATAGCCGTACTGAC
+chr2L_5543_5980                                    .
+chr2L_6666_6881                                    .
+</code></pre>
+</div>
+
+<p>The analysis starts out similarly to the LSI example above. We first filter out sites that are seen in fewer cells (in this case we only keep sites that are seen in at least 5% of cells) and then cells that have relatively low coverage (again, we filter out the lowest 10% of cells).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rowSums</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fly_summits_6to8</span><span class="p">[</span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nf">dim</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)[</span><span class="m">2</span><span class="p">]</span><span class="o">*</span><span class="m">0.05</span><span class="p">,]</span><span class="w">
+    </span><span class="n">new_counts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">colSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w">
+    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ncounts</span><span class="p">[,</span><span class="n">new_counts</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">quantile</span><span class="p">(</span><span class="n">new_counts</span><span class="p">,</span><span class="n">probs</span><span class="o">=</span><span class="m">0.1</span><span class="p">)]</span><span class="w">
+    </span><span class="n">ncounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ncounts</span><span class="p">[</span><span class="n">rowSums</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">0</span><span class="p">,]</span><span class="w">
+    
+    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">4</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">4</span><span class="p">)</span><span class="w">
+    </span><span class="n">hist</span><span class="p">(</span><span class="n">log10</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">),</span><span class="n">main</span><span class="o">=</span><span class="s2">"No. of Cells Each Site is Observed In"</span><span class="p">,</span><span class="n">breaks</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="n">log10</span><span class="p">(</span><span class="nf">min</span><span class="p">(</span><span class="n">num_cells_ncounted</span><span class="p">[</span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nf">dim</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)[</span><span class="m">2</span><span class="p">]</span><span class="o">*</span><span class="m">0.05</span><span class="p">])),</span><span class="n">lwd</span><span class="o">=</span><span class="m">2</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="s2">"indianred"</span><span class="p">)</span><span class="w">
+    </span><span class="n">hist</span><span class="p">(</span><span class="n">log10</span><span class="p">(</span><span class="n">new_counts</span><span class="p">),</span><span class="n">main</span><span class="o">=</span><span class="s2">"Number of Sites Each Cell Uses"</span><span class="p">,</span><span class="n">breaks</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="n">log10</span><span class="p">(</span><span class="n">quantile</span><span class="p">(</span><span class="n">new_counts</span><span class="p">,</span><span class="n">probs</span><span class="o">=</span><span class="m">0.1</span><span class="p">)),</span><span class="n">lwd</span><span class="o">=</span><span class="m">2</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="s2">"indianred"</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_26_0.png" style="max-width: 700px;" /></p>
+
+<p><img src="../images/docs_26_1.png" style="max-width: 700px;" /></p>
+
+<p>The next step is to tranform the data and generate a lower dimensional representation again, except that we first filter out sex chromosome counts. We also leave the first component in now, and we use 50 dimensions (rather than 6).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">sexsites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="n">grep</span><span class="p">(</span><span class="s2">"chrY"</span><span class="p">,</span><span class="n">rownames</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)),</span><span class="n">grep</span><span class="p">(</span><span class="s2">"chrX"</span><span class="p">,</span><span class="n">rownames</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)))</span><span class="w">
+    </span><span class="n">ncounts.nosex</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ncounts</span><span class="p">[</span><span class="o">-</span><span class="n">sexsites</span><span class="p">,]</span><span class="w">
+    
+    </span><span class="n">nfreqs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">t</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Matrix</span><span class="o">::</span><span class="n">colSums</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">))</span><span class="w">
+    </span><span class="n">idf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as</span><span class="p">(</span><span class="nf">log</span><span class="p">(</span><span class="m">1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">ncol</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">Matrix</span><span class="o">::</span><span class="n">rowSums</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">)),</span><span class="w"> </span><span class="s2">"sparseVector"</span><span class="p">)</span><span class="w">
+    </span><span class="n">tf_idf_counts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as</span><span class="p">(</span><span class="n">Diagonal</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">as.vector</span><span class="p">(</span><span class="n">idf</span><span class="p">)),</span><span class="w"> </span><span class="s2">"sparseMatrix"</span><span class="p">)</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">nfreqs</span><span class="w">
+    
+    </span><span class="n">set.seed</span><span class="p">(</span><span class="m">0</span><span class="p">)</span><span class="w">
+    </span><span class="n">SVDtsne</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">irlba</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">,</span><span class="w"> </span><span class="m">50</span><span class="p">,</span><span class="w"> </span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">d_diagtsne</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matrix</span><span class="p">(</span><span class="m">0</span><span class="p">,</span><span class="w"> </span><span class="n">nrow</span><span class="o">=</span><span class="m">50</span><span class="p">,</span><span class="w"> </span><span class="n">ncol</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">diag</span><span class="p">(</span><span class="n">d_diagtsne</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SVDtsne</span><span class="o">$</span><span class="n">d</span><span class="w">
+    </span><span class="n">SVDtsne_vd</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">d_diagtsne</span><span class="w"> </span><span class="o">%*%</span><span class="w"> </span><span class="n">t</span><span class="p">(</span><span class="n">SVDtsne</span><span class="o">$</span><span class="n">v</span><span class="p">))</span><span class="w">
+
+
+    </span><span class="nf">dim</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">)</span><span class="w">
+    </span><span class="n">ncounts.nosex</span><span class="p">[</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">,</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">]</span><span class="w">
+    </span><span class="n">tf_idf_counts</span><span class="p">[</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">,</span><span class="m">1</span><span class="o">:</span><span class="m">2</span><span class="p">]</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>19956
+7092
+
+
+2 x 2 sparse Matrix of class "dgCMatrix"
+                AGCGATAGAACGAATTCGAGAACCGGAGCCTATCCT
+chr2L_5543_5980                                    .
+chr2L_7488_8077                                    .
+                AGCGATAGAACGAATTCGAGTCATAGCCGTACTGAC
+chr2L_5543_5980                                    .
+chr2L_7488_8077                                    .
+
+
+
+2 x 2 sparse Matrix of class "dgCMatrix"
+                AGCGATAGAACGAATTCGAGAACCGGAGCCTATCCT
+chr2L_5543_5980                                    .
+chr2L_7488_8077                                    .
+                AGCGATAGAACGAATTCGAGTCATAGCCGTACTGAC
+chr2L_5543_5980                                    .
+chr2L_7488_8077                                    .
+</code></pre>
+</div>
+
+<p>Next, we use t-SNE to visualize the data. We feed this lower dimensional representation of the data directly into the Rtsne package.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">set.seed</span><span class="p">(</span><span class="m">0</span><span class="p">)</span><span class="w">
+    </span><span class="n">tsnetfidf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Rtsne</span><span class="p">(</span><span class="n">SVDtsne_vd</span><span class="p">,</span><span class="n">pca</span><span class="o">=</span><span class="nb">F</span><span class="p">)</span></code></pre></figure>
+
+<p>To identify clusters of cells, we use the density peak algorithm.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">tsnedist</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dist</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">)</span><span class="w">
+    </span><span class="n">set.seed</span><span class="p">(</span><span class="m">0</span><span class="p">)</span><span class="w">
+    </span><span class="n">dclust</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">densityClust</span><span class="p">(</span><span class="n">tsnedist</span><span class="p">,</span><span class="n">gaussian</span><span class="o">=</span><span class="nb">T</span><span class="p">)</span><span class="w">
+    </span><span class="n">dclust</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">findClusters</span><span class="p">(</span><span class="n">dclust</span><span class="p">,</span><span class="w"> </span><span class="n">rho</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">50</span><span class="p">,</span><span class="w"> </span><span class="n">delta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">2.5</span><span class="p">)</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Distance cutoff calculated to 3.405709 
+
+
+the length of the distance: 25144686
+</code></pre>
+</div>
+
+<p>The density peak algorithm requires you to set two parameters - “delta” and “rho”. For each data point, the algorithm calculates a local density of other points within some set distance and the minimum distance to the next point that has a higher local density. On the basis of these two values, you can choose a set of points that are outliers both in local density and the distance to another point with a higher density, which become cluster “peaks”. Below, we show you the distribution of these two values in our data set and where we decided to draw the cutoff. You can read more about this algorithm <a href="http://science.sciencemag.org/content/344/6191/1492">here</a>.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">6</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">6</span><span class="p">)</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">dclust</span><span class="o">$</span><span class="n">rho</span><span class="p">,</span><span class="n">dclust</span><span class="o">$</span><span class="n">delta</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.6</span><span class="p">)</span><span class="w">
+    </span><span class="n">points</span><span class="p">(</span><span class="n">dclust</span><span class="o">$</span><span class="n">rho</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">],</span><span class="n">dclust</span><span class="o">$</span><span class="n">delta</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">],</span><span class="n">col</span><span class="o">=</span><span class="s2">"red"</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.8</span><span class="p">)</span><span class="w">
+    </span><span class="n">text</span><span class="p">(</span><span class="n">dclust</span><span class="o">$</span><span class="n">rho</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">]</span><span class="m">-2</span><span class="p">,</span><span class="n">dclust</span><span class="o">$</span><span class="n">delta</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">]</span><span class="m">+1.5</span><span class="p">,</span><span class="n">labels</span><span class="o">=</span><span class="n">dclust</span><span class="o">$</span><span class="n">clusters</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">])</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="m">50</span><span class="p">)</span><span class="w">
+    </span><span class="n">abline</span><span class="p">(</span><span class="n">h</span><span class="o">=</span><span class="m">2.5</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_35_0.png" style="max-width: 700px;" /></p>
+
+<p>Finally, we plot the t-SNE plots and show how the points are related to our original LSI clustering, the assigned sex of each cell (you’ll need to download an additional file for this), and curren density peak clusters.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.xycalls.txt"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.xycalls.txt"</span><span class="p">)</span><span class="w">
+    </span><span class="n">sexcolors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s2">"6to8.xycalls.txt"</span><span class="p">)</span><span class="w">
+
+
+    </span><span class="n">tsnecols</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="s2">"#E31A1C"</span><span class="p">,</span><span class="s2">"#FFD700"</span><span class="p">,</span><span class="s2">"#771122"</span><span class="p">,</span><span class="s2">"#777711"</span><span class="p">,</span><span class="s2">"#1F78B4"</span><span class="p">,</span><span class="s2">"#68228B"</span><span class="p">,</span><span class="s2">"#AAAA44"</span><span class="p">,</span><span class="w">
+                 </span><span class="s2">"#60CC52"</span><span class="p">,</span><span class="s2">"#771155"</span><span class="p">,</span><span class="s2">"#DDDD77"</span><span class="p">,</span><span class="s2">"#774411"</span><span class="p">,</span><span class="s2">"#AA7744"</span><span class="p">,</span><span class="s2">"#AA4455"</span><span class="p">,</span><span class="s2">"#117744"</span><span class="p">,</span><span class="w">
+                 </span><span class="s2">"#000080"</span><span class="p">,</span><span class="s2">"#44AA77"</span><span class="p">,</span><span class="s2">"#AA4488"</span><span class="p">,</span><span class="s2">"#DDAA77"</span><span class="p">)</span><span class="w">
+    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">8</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">8</span><span class="p">)</span><span class="w">
+    </span><span class="n">par</span><span class="p">(</span><span class="n">mfrow</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="m">2</span><span class="p">,</span><span class="m">2</span><span class="p">))</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="n">main</span><span class="o">=</span><span class="s2">"No Clusters"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">)</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="w">
+         </span><span class="n">col</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="s2">"#1F78B4"</span><span class="p">,</span><span class="s2">"#FFD700"</span><span class="p">,</span><span class="s2">"#60CC52"</span><span class="p">,</span><span class="s2">"#E31A1C"</span><span class="p">)[</span><span class="n">as.factor</span><span class="p">(</span><span class="n">lsi_cells</span><span class="p">[</span><span class="n">match</span><span class="p">(</span><span class="n">colnames</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">),</span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">1</span><span class="p">]),</span><span class="m">2</span><span class="p">])],</span><span class="w">
+         </span><span class="n">main</span><span class="o">=</span><span class="s2">"LSI Clusters"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">)</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="s2">"blue"</span><span class="p">,</span><span class="s2">"red"</span><span class="p">)[</span><span class="n">sexcolors</span><span class="p">[</span><span class="n">match</span><span class="p">(</span><span class="n">colnames</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">),</span><span class="n">sexcolors</span><span class="p">[,</span><span class="m">1</span><span class="p">]),</span><span class="m">2</span><span class="p">]],</span><span class="w">
+         </span><span class="n">main</span><span class="o">=</span><span class="s2">"M/F Coloring"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">)</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="n">col</span><span class="o">=</span><span class="n">tsnecols</span><span class="p">[</span><span class="n">as.factor</span><span class="p">(</span><span class="n">dclust</span><span class="o">$</span><span class="n">clusters</span><span class="p">)],</span><span class="n">main</span><span class="o">=</span><span class="s2">"Density Peak Clusters"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">)</span><span class="w">
+    </span><span class="n">text</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">,</span><span class="m">1</span><span class="p">],</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">,</span><span class="m">2</span><span class="p">],</span><span class="n">labels</span><span class="o">=</span><span class="n">dclust</span><span class="o">$</span><span class="n">clusters</span><span class="p">[</span><span class="n">dclust</span><span class="o">$</span><span class="n">peaks</span><span class="p">],</span><span class="n">cex</span><span class="o">=</span><span class="m">2.5</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_38_0.png" style="max-width: 700px;" /></p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rm</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">ncounts</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">ncounts.nosex</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">nfreqs</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">SVDtsne</span><span class="p">)</span><span class="w">
+    </span><span class="n">gc</span><span class="p">()</span></code></pre></figure>
+
+<hr />
+<p><a id="usecase3"></a></p>
+<h2 id="use-case-3-differential-accessibility">Use case 3: Differential accessibility</h2>
+
+<p>Having defined clusters of cells on the basis of chromatin accessibility profiles, you might like to know which sites in the genome are different between clusters. To figure that out, we use the linear modelling framework implemented in Monocle. This use case will walk you through the steps to define which sites are open in mesodermal cells relative to all other cells in the time point, but the same framework could be applied to any comparison you like.</p>
+
+<p>Before getting into the analysis, we need to take care of a few housekeeping things. First, we want to load Monocle to run the differential accessibility tests. To do this we detach the legacy version of irlba and then load Monocle. Finally, we created a little patch to Monocle that reports beta values from the differential accessibility tests so that we can distinguish sites that are opening from sites that are closing.</p>
+
+<p><strong>NOTE:</strong> This code is implemented to run on multiple processors on a computing cluster, you may need special modifications to get this working in your preferred computing environment.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">suppressPackageStartupMessages</span><span class="p">({</span><span class="w">
+        </span><span class="n">detach</span><span class="p">(</span><span class="s2">"package:irlba"</span><span class="p">,</span><span class="w"> </span><span class="n">unload</span><span class="o">=</span><span class="kc">TRUE</span><span class="p">)</span><span class="w">
+        </span><span class="n">library</span><span class="p">(</span><span class="n">monocle</span><span class="p">)</span><span class="w">
+    </span><span class="p">})</span><span class="w">
+    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/monocle_patch.R"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"monocle_patch.R"</span><span class="p">)</span><span class="w">
+    </span><span class="n">source</span><span class="p">(</span><span class="s2">"monocle_patch.R"</span><span class="p">)</span><span class="w">
+    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.read.report.txt"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.read.report.txt"</span><span class="p">)</span><span class="w">
+    </span><span class="n">readcounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s2">"6to8.read.report.txt"</span><span class="p">,</span><span class="n">header</span><span class="o">=</span><span class="nb">T</span><span class="p">)</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Warning message:
+“replacing previous import by ‘splines::splineDesign’ when loading ‘VGAM’”Warning message:
+“replacing previous import by ‘grid::arrow’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘grid::unit’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘igraph::union’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘igraph::as_data_frame’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘igraph::groups’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘igraph::%&gt;%’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::add_rownames’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::do’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::group_by_’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::inner_join’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::sample_n’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::select_’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘dplyr::top_n’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘ggplot2::Position’ when loading ‘monocle’”Warning message:
+“replacing previous import by ‘plyr::arrange’ when loading ‘monocle’”
+</code></pre>
+</div>
+
+<p>Because the summit matrix includes data for more cells, we first subset it cells that we have germ layer predictions for. We then filter out any sites that weren’t observed in at least 50 cells.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">goodcells</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">match</span><span class="p">(</span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">1</span><span class="p">],</span><span class="n">colnames</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">))</span><span class="w">
+    </span><span class="n">da_mat</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fly_summits_6to8</span><span class="p">[,</span><span class="n">goodcells</span><span class="p">]</span><span class="w">
+    </span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rowSums</span><span class="p">(</span><span class="n">da_mat</span><span class="p">)</span><span class="w">
+    </span><span class="n">da_mat_final</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">da_mat</span><span class="p">[</span><span class="n">num_cells_ncounted</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="m">50</span><span class="p">,]</span><span class="w">
+    
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">da_mat</span><span class="p">)</span><span class="w">
+    </span><span class="n">gc</span><span class="p">()</span></code></pre></figure>
+
+<p><br /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center">used</th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th>(Mb)</th>
+      <th> </th>
+      <th> </th>
+      <th>gc trigger</th>
+      <th> </th>
+      <th> </th>
+      <th>(Mb)</th>
+      <th> </th>
+      <th> </th>
+      <th>max used</th>
+      <th> </th>
+      <th> </th>
+      <th>(Mb)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><strong>Ncells</strong></td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">1747068</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td>93.4</td>
+      <td> </td>
+      <td> </td>
+      <td>11554252</td>
+      <td> </td>
+      <td> </td>
+      <td>617.1</td>
+      <td> </td>
+      <td> </td>
+      <td>14442815</td>
+      <td> </td>
+      <td> </td>
+      <td>771.4</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><strong>Vcells</strong></td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">443259864</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td>3381.9</td>
+      <td> </td>
+      <td> </td>
+      <td>2642652780</td>
+      <td> </td>
+      <td> </td>
+      <td>20161.9</td>
+      <td> </td>
+      <td> </td>
+      <td>3302654927</td>
+      <td> </td>
+      <td> </td>
+      <td>25197.3</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><br />
+We next want to load our site x cell matrix into a Cell Data Set (‘CDS’), a format that allows us to use some of the convenience functions available in monocle. The first step is to set up a “phenotype” data frame. This is a framework for storing all kinds of information about individual cells.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">readcounts.assigned</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readcounts</span><span class="p">[</span><span class="n">match</span><span class="p">(</span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">1</span><span class="p">],</span><span class="n">rownames</span><span class="p">(</span><span class="n">readcounts</span><span class="p">)),]</span><span class="w">
+    </span><span class="n">clusterfactor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">factor</span><span class="p">((</span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">2</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s1">'4'</span><span class="p">)</span><span class="m">+0</span><span class="p">,</span><span class="n">levels</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="s2">"0"</span><span class="p">,</span><span class="s2">"1"</span><span class="p">))</span><span class="w">
+    </span><span class="n">pda</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">data.frame</span><span class="p">(</span><span class="nf">as.character</span><span class="p">(</span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">1</span><span class="p">]),</span><span class="nf">as.numeric</span><span class="p">(</span><span class="n">log10</span><span class="p">(</span><span class="n">readcounts.assigned</span><span class="p">[,</span><span class="m">2</span><span class="p">])),</span><span class="n">clusterfactor</span><span class="p">)</span><span class="w">
+    </span><span class="nf">names</span><span class="p">(</span><span class="n">pda</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="s2">"CellID"</span><span class="p">,</span><span class="w"> </span><span class="s2">"ReadDepth"</span><span class="p">,</span><span class="s2">"CellCluster"</span><span class="p">)</span><span class="w">
+    </span><span class="n">pda</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="p">(</span><span class="s2">"AnnotatedDataFrame"</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pda</span><span class="p">)</span></code></pre></figure>
+
+<p>We next set up a “feature” data frame - a framework for storing information about data features (in this case, sites).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">fda</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">as.data.frame</span><span class="p">(</span><span class="nf">as.character</span><span class="p">(</span><span class="n">rownames</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">)))</span><span class="w">
+    </span><span class="nf">names</span><span class="p">(</span><span class="n">fda</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"Peak"</span><span class="w">
+    </span><span class="n">fda</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new</span><span class="p">(</span><span class="s2">"AnnotatedDataFrame"</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fda</span><span class="p">)</span></code></pre></figure>
+
+<p>And then we can combine the feature data frame and phenotype data frame with the raw site x cell matrix into a CDS. Because the data are binary calls of insertions in sites, we set the <code class="highlighter-rouge">expressionFamily</code> to binomialff.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rownames</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">NULL</span><span class="w">
+    </span><span class="n">colnames</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">NULL</span><span class="w">
+    </span><span class="n">submat_cds</span><span class="w"> </span><span class="o">=</span><span class="w">  </span><span class="n">newCellDataSet</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">,</span><span class="w">
+            </span><span class="n">featureData</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fda</span><span class="p">,</span><span class="w">
+            </span><span class="n">phenoData</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">pda</span><span class="p">,</span><span class="w">
+            </span><span class="n">expressionFamily</span><span class="o">=</span><span class="n">binomialff</span><span class="p">(),</span><span class="w">
+            </span><span class="n">lowerDetectionLimit</span><span class="o">=</span><span class="m">1</span><span class="p">)</span><span class="w">
+    
+    </span><span class="n">pData</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)</span><span class="o">$</span><span class="n">Size_Factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Warning message in newCellDataSet(da_mat_final, featureData = fda, phenoData = pda, :
+“Warning: featureData must contain a column verbatim named 'gene_short_name' for certain functions”Warning message in newCellDataSet(da_mat_final, featureData = fda, phenoData = pda, :
+“Warning: featureData must contain a column verbatim named 'gene_short_name' for certain functions”Warning message in newCellDataSet(da_mat_final, featureData = fda, phenoData = pda, :
+“Warning: featureData must contain a column verbatim named 'gene_short_name' for certain functions”
+</code></pre>
+</div>
+
+<p>Here we just delete some variables that we won’t need anymore to free up RAM.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rm</span><span class="p">(</span><span class="n">readcounts.assigned</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">fda</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">pda</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">)</span><span class="w">
+    </span><span class="n">gc</span><span class="p">()</span></code></pre></figure>
+
+<p><br /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center">used</th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th>(Mb)</th>
+      <th> </th>
+      <th> </th>
+      <th>gc trigger</th>
+      <th> </th>
+      <th> </th>
+      <th>(Mb)</th>
+      <th> </th>
+      <th> </th>
+      <th>max used</th>
+      <th> </th>
+      <th> </th>
+      <th>(Mb)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center"><strong>Ncells</strong></td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">1810190</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td>96.7</td>
+      <td> </td>
+      <td> </td>
+      <td>9243401</td>
+      <td> </td>
+      <td> </td>
+      <td>493.7</td>
+      <td> </td>
+      <td> </td>
+      <td>14442815</td>
+      <td> </td>
+      <td> </td>
+      <td>771.4</td>
+    </tr>
+    <tr>
+      <td style="text-align: center"><strong>Vcells</strong></td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">443430760</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td>3383.2</td>
+      <td> </td>
+      <td> </td>
+      <td>2114122224</td>
+      <td> </td>
+      <td> </td>
+      <td>16129.5</td>
+      <td> </td>
+      <td> </td>
+      <td>3302654927</td>
+      <td> </td>
+      <td> </td>
+      <td>25197.3</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><br /></p>
+
+<p>And now we’re ready to run the likelihood ratio tests to identify differentially accessible sites. Monocle provides a convenient wrapper for doing this with the <code class="highlighter-rouge">differentialGeneTest</code> function. This step can take several minutes to run.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">differtest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">differentialGeneTest</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">,</span><span class="w"> </span><span class="n">fullModelFormulaStr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"~CellCluster + ReadDepth"</span><span class="p">,</span><span class="w">
+                                       </span><span class="n">reducedModelFormulaStr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"~ReadDepth"</span><span class="p">,</span><span class="w"> </span><span class="n">cores</span><span class="o">=</span><span class="m">15</span><span class="p">)</span><span class="w">
+    </span><span class="n">head</span><span class="p">(</span><span class="n">differtest</span><span class="p">[</span><span class="n">order</span><span class="p">(</span><span class="n">differtest</span><span class="o">$</span><span class="n">qval</span><span class="p">),])</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Warning message:
+“closing unused connection 18 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 17 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 16 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 15 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 14 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 13 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 12 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 11 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 10 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 9 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 8 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 7 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 6 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 5 (&lt;-localhost:11614)”Warning message:
+“closing unused connection 4 (&lt;-localhost:11614)”
+</code></pre>
+</div>
+
+<p><br /></p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center">status</th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center"> </th>
+      <th style="text-align: center">family</th>
+      <th> </th>
+      <th> </th>
+      <th>pval</th>
+      <th> </th>
+      <th> </th>
+      <th>beta</th>
+      <th> </th>
+      <th> </th>
+      <th>qval</th>
+      <th> </th>
+      <th> </th>
+      <th>Peak</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center">24326</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>2.778820</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>chr3L_10547945_10548368</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">38943</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>3.194512</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>chr3R_18852360_18852769</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">8709</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>3.442576</td>
+      <td> </td>
+      <td> </td>
+      <td>0.000000e+00</td>
+      <td> </td>
+      <td> </td>
+      <td>chr2L_20476729_20477328</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">8716</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>1.388543e-311</td>
+      <td> </td>
+      <td> </td>
+      <td>3.344137</td>
+      <td> </td>
+      <td> </td>
+      <td>1.809584e-307</td>
+      <td> </td>
+      <td> </td>
+      <td>chr2L_20486338_20486627</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">12015</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>1.716059e-305</td>
+      <td> </td>
+      <td> </td>
+      <td>3.306066</td>
+      <td> </td>
+      <td> </td>
+      <td>1.789129e-301</td>
+      <td> </td>
+      <td> </td>
+      <td>chr2R_5822850_5823121</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">19994</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">OK</td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center"> </td>
+      <td style="text-align: center">binomialff</td>
+      <td> </td>
+      <td> </td>
+      <td>4.726260e-298</td>
+      <td> </td>
+      <td> </td>
+      <td>2.672527</td>
+      <td> </td>
+      <td> </td>
+      <td>4.106254e-294</td>
+      <td> </td>
+      <td> </td>
+      <td>chr3L_589563_589900</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><br /></p>
+
+<p>With this test, we find 19,535 sites are differentially accessible (1% FDR) in myogenic mesoderm cells relative to all other cells in the embryo. 8,398 of these are more accessible in myogenic mesoderm than other cells, while 11,137 are less accessible in myogenic mesoderm. We can see that the sites in the top of the list are consistent with what you’d expect (for example, the second most significant hit happens to be the promoter of <em><a href="http://genome.ucsc.edu/cgi-bin/hgTracks?db=dm3&amp;lastVirtModeType=default&amp;lastVirtModeExtraState=&amp;virtModeType=default&amp;virtMode=0&amp;nonVirtPosition=&amp;position=chr3R%3A18852361-18852769&amp;hgsid=643680341_WUtTSN0POZLME0gO3LWuI5A5OXJi">lmd</a></em>, a known master regulator of “<a href="http://www.sdbonline.org/sites/fly/gene/lamedk1.htm">fusion-competent myoblasts</a>”.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">8</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">4</span><span class="p">)</span><span class="w">
+    </span><span class="n">par</span><span class="p">(</span><span class="n">mfrow</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="m">1</span><span class="p">,</span><span class="m">2</span><span class="p">))</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">,</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="w">
+         </span><span class="n">col</span><span class="o">=</span><span class="nf">c</span><span class="p">(</span><span class="s2">"#1F78B4"</span><span class="p">,</span><span class="w"> </span><span class="s2">"#FFD700"</span><span class="p">,</span><span class="w"> </span><span class="s2">"#60CC52"</span><span class="p">,</span><span class="w"> </span><span class="s2">"#E31A1C"</span><span class="p">)[</span><span class="n">as.factor</span><span class="p">(</span><span class="n">lsi_cells</span><span class="p">[</span><span class="n">match</span><span class="p">(</span><span class="n">colnames</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">),</span><span class="w">
+         </span><span class="n">lsi_cells</span><span class="p">[,</span><span class="m">1</span><span class="p">]),</span><span class="m">2</span><span class="p">])],</span><span class="n">main</span><span class="o">=</span><span class="s2">"LSI Clusters"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">,</span><span class="n">xlab</span><span class="o">=</span><span class="s2">"t-SNE1"</span><span class="p">,</span><span class="n">ylab</span><span class="o">=</span><span class="s2">"t-SNE2"</span><span class="p">)</span><span class="w">
+    </span><span class="n">plot</span><span class="p">(</span><span class="n">tsnetfidf</span><span class="o">$</span><span class="n">Y</span><span class="p">[</span><span class="n">match</span><span class="p">(</span><span class="n">pData</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)</span><span class="o">$</span><span class="n">CellID</span><span class="p">,</span><span class="n">colnames</span><span class="p">(</span><span class="n">tf_idf_counts</span><span class="p">)),][</span><span class="n">order</span><span class="p">(</span><span class="n">exprs</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)[</span><span class="m">38943</span><span class="p">,]),],</span><span class="n">pch</span><span class="o">=</span><span class="m">20</span><span class="p">,</span><span class="w">
+         </span><span class="n">main</span><span class="o">=</span><span class="s2">"lmd Promoter+ Cells"</span><span class="p">,</span><span class="n">cex</span><span class="o">=</span><span class="m">0.25</span><span class="p">,</span><span class="w">
+         </span><span class="n">col</span><span class="o">=</span><span class="n">ifelse</span><span class="p">(</span><span class="n">exprs</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)[</span><span class="m">38943</span><span class="p">,][</span><span class="n">order</span><span class="p">(</span><span class="n">exprs</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)[</span><span class="m">38943</span><span class="p">,])]</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">0</span><span class="p">,</span><span class="s2">"#E31A1C"</span><span class="p">,</span><span class="s2">"gray"</span><span class="p">),</span><span class="w">
+         </span><span class="n">xlab</span><span class="o">=</span><span class="s2">"t-SNE1"</span><span class="p">,</span><span class="n">ylab</span><span class="o">=</span><span class="s2">"t-SNE2"</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_55_0.png" style="max-width: 700px;" /></p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rm</span><span class="p">(</span><span class="n">da_mat_final</span><span class="p">)</span><span class="w">
+    </span><span class="n">rm</span><span class="p">(</span><span class="n">submat_cds</span><span class="p">)</span><span class="w">
+    </span><span class="n">gc</span><span class="p">()</span></code></pre></figure>
+
+<hr />
+<p><a id="usecase4"></a></p>
+<h2 id="use-case-4-order-cells-in-development">Use case 4: Order cells in development</h2>
+<p>One very powerful aspect of single-cell technologies is that we can use them to trace the developmental trajectories of cells. In the Cusanovich et al. paper, we showed that sci-ATAC-seq data can be used to identify developmental trajectories. Here we walk you through the basic steps of that analysis.</p>
+
+<p>For this analysis, we turn to the 2-4 hour time point, so we’ll load a cds for cells from that time point. On the basis of the t-SNE analysis of these cells we were able to classify the cells into the following 7 cell types: ‘Unknown’, ‘Collisions’, ‘Blastoderm’, ‘Neural’, ‘Ectoderm’,  ‘Mesoderm’, ‘Endoderm’. However, we really wanted to see how cells transitioned from the blastoderm state to the germ layers, so we used monocle to arrange cells in a progression to learn about how the regulatory landscape of the genome changed through development.</p>
+
+<p>One note: instead of using the counts of reads mapping to individual sites of accessibility for this analysis, we binned all the sites that were near eachother in order to improve the sparsity of the data.</p>
+
+<p>To run through this section, we need several files, so we’ll download a tarball and unpack it before proceeding.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
+        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/2to4_files.tar.gz"</span><span class="p">,</span><span class="w">
+        </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2to4_files.tar.gz"</span><span class="p">)</span><span class="w">
+    </span><span class="n">system</span><span class="p">(</span><span class="s2">"tar -xzf 2to4_files.tar.gz"</span><span class="p">)</span><span class="w">
+    </span><span class="n">cds_2to4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"./2to4_files/cds_2to4_aggregated.rds"</span><span class="p">)</span><span class="w">
+    </span><span class="n">overlapped_sites</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s1">'./2to4_files/2to4.overlapped_sites.bed'</span><span class="p">)</span><span class="w">
+    </span><span class="n">cell_classification</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s1">'./2to4_files/2to4.germlayers.txt'</span><span class="p">)</span><span class="w">
+    </span><span class="n">table</span><span class="p">(</span><span class="n">cell_classification</span><span class="o">$</span><span class="n">V</span><span class="m">2</span><span class="p">)</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>Blastoderm Collisions   Ectoderm   Endoderm   Mesoderm     Neural    Unknown 
+      2662        164       1865        575       1496        103        358 
+</code></pre>
+</div>
+
+<p>After unpacking all those files, we want to collect the top 100 DA sites for each of the cell types found in this time point (excluding sites from the ‘Collisions’ and ‘Unknown’ categories). After collecting those sites we need to determine which binned sites they overlap.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">DA_monocle_list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">lapply</span><span class="p">(</span><span class="n">seq</span><span class="p">(</span><span class="m">1</span><span class="p">,</span><span class="m">7</span><span class="p">,</span><span class="m">1</span><span class="p">),</span><span class="w"> </span><span class="n">FUN</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">function</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="n">DA_file_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">paste0</span><span class="p">(</span><span class="s1">'./2to4_files/2to4.sigopen.cluster'</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="s1">'.txt'</span><span class="p">)</span><span class="w">
+        </span><span class="n">DA_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.csv</span><span class="p">(</span><span class="n">DA_file_name</span><span class="p">,</span><span class="w"> </span><span class="n">sep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'\t'</span><span class="p">,</span><span class="w"> </span><span class="n">header</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">F</span><span class="p">)</span><span class="w">
+        </span><span class="n">DA_file</span><span class="o">$</span><span class="n">GL</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x</span><span class="w">
+        </span><span class="n">return</span><span class="w"> </span><span class="p">(</span><span class="n">DA_file</span><span class="p">)</span><span class="w">
+    </span><span class="p">})</span><span class="w">
+    
+    </span><span class="n">DA_monocle</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">data.table</span><span class="o">::</span><span class="n">rbindlist</span><span class="p">(</span><span class="n">DA_monocle_list</span><span class="p">)</span><span class="w">
+    </span><span class="n">colnames</span><span class="p">(</span><span class="n">DA_monocle</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="s1">'chr'</span><span class="p">,</span><span class="s1">'start'</span><span class="p">,</span><span class="w"> </span><span class="s1">'end'</span><span class="p">,</span><span class="w"> </span><span class="s1">'qvalue'</span><span class="p">,</span><span class="w"> </span><span class="s1">'GL'</span><span class="p">)</span><span class="w">
+    </span><span class="n">DA_monocle</span><span class="o">$</span><span class="n">coord</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">paste</span><span class="p">(</span><span class="n">DA_monocle</span><span class="o">$</span><span class="n">chr</span><span class="p">,</span><span class="w"> </span><span class="n">DA_monocle</span><span class="o">$</span><span class="n">start</span><span class="p">,</span><span class="w"> </span><span class="n">DA_monocle</span><span class="o">$</span><span class="n">end</span><span class="p">,</span><span class="w"> </span><span class="n">sep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'_'</span><span class="p">)</span><span class="w">
+    
+    </span><span class="n">get_top_DA</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">function</span><span class="p">(</span><span class="n">cluster</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">1</span><span class="p">,</span><span class="w"> </span><span class="n">DA_results</span><span class="o">=</span><span class="n">DA_GL</span><span class="p">,</span><span class="w"> </span><span class="n">num</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">500</span><span class="p">){</span><span class="w">
+        </span><span class="n">DA_this_cluster</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">subset</span><span class="p">(</span><span class="n">DA_results</span><span class="p">,</span><span class="w"> </span><span class="n">GL</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">cluster</span><span class="p">)</span><span class="w">
+        </span><span class="n">DA_this_cluster</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DA_this_cluster</span><span class="p">[</span><span class="n">order</span><span class="p">(</span><span class="n">DA_this_cluster</span><span class="p">[,</span><span class="n">qvalue</span><span class="p">]),]</span><span class="w">
+        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">num</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">nrow</span><span class="p">(</span><span class="n">DA_this_cluster</span><span class="p">)){</span><span class="w">
+            </span><span class="n">return</span><span class="w"> </span><span class="p">(</span><span class="n">DA_this_cluster</span><span class="p">[</span><span class="nf">c</span><span class="p">(</span><span class="m">1</span><span class="o">:</span><span class="n">nrow</span><span class="p">(</span><span class="n">DA_this_cluster</span><span class="p">)),]</span><span class="o">$</span><span class="n">coord</span><span class="p">)</span><span class="w">
+        </span><span class="p">}</span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="n">return</span><span class="w"> </span><span class="p">(</span><span class="n">DA_this_cluster</span><span class="p">[</span><span class="nf">c</span><span class="p">(</span><span class="m">1</span><span class="o">:</span><span class="n">num</span><span class="p">),]</span><span class="o">$</span><span class="n">coord</span><span class="p">)}</span><span class="w">
+    </span><span class="p">}</span><span class="w">
+    
+    </span><span class="n">DA_sites_to_order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">unlist</span><span class="p">(</span><span class="n">lapply</span><span class="p">(</span><span class="nf">c</span><span class="p">(</span><span class="m">1</span><span class="p">,</span><span class="m">3</span><span class="p">,</span><span class="m">4</span><span class="p">,</span><span class="m">5</span><span class="p">,</span><span class="m">6</span><span class="p">),</span><span class="w"> </span><span class="n">get_top_DA</span><span class="p">,</span><span class="w"> </span><span class="n">DA_results</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DA_monocle</span><span class="p">,</span><span class="n">num</span><span class="o">=</span><span class="m">100</span><span class="p">))</span><span class="w">
+    </span><span class="n">overlapped_DA_sites_to_order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">subset</span><span class="p">(</span><span class="n">overlapped_sites</span><span class="p">,</span><span class="w"> </span><span class="n">V</span><span class="m">4</span><span class="w"> </span><span class="o">%in%</span><span class="w"> </span><span class="n">DA_sites_to_order</span><span class="p">)</span><span class="o">$</span><span class="n">V</span><span class="m">8</span></code></pre></figure>
+
+<p>We then update the 2-4 hour CDS to track what the germ layer assingments are and to establish which sites should be used for ordering cells (the top DA sites we defined above).</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">rownames</span><span class="p">(</span><span class="n">cell_classification</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cell_classification</span><span class="o">$</span><span class="n">V</span><span class="m">1</span><span class="w">
+    </span><span class="n">germ_layer_pallet</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="s1">'Unknown'</span><span class="o">=</span><span class="s1">'#68228B'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Blastoderm'</span><span class="o">=</span><span class="s1">'#808080'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Neural'</span><span class="o">=</span><span class="s1">'#1F78B4'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Ectoderm'</span><span class="o">=</span><span class="s1">'#FFD700'</span><span class="p">,</span><span class="w">
+                          </span><span class="s1">'Mesoderm'</span><span class="o">=</span><span class="w"> </span><span class="s1">'#E31A1C'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Endoderm'</span><span class="o">=</span><span class="s1">'#60CC52'</span><span class="p">,</span><span class="w"> </span><span class="s1">'Collisions'</span><span class="o">=</span><span class="s1">'saddlebrown'</span><span class="p">)</span><span class="w">
+    </span><span class="n">cell_classification</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cell_classification</span><span class="p">[</span><span class="n">rownames</span><span class="p">(</span><span class="n">pData</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">)),]</span><span class="w">
+    </span><span class="n">cds_2to4</span><span class="o">$</span><span class="n">germ_layer_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cell_classification</span><span class="o">$</span><span class="n">V</span><span class="m">2</span><span class="w">
+    </span><span class="n">fData</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">)</span><span class="o">$</span><span class="n">use_for_ordering</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">FALSE</span><span class="w">
+    </span><span class="n">cds_2to4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">setOrderingFilter</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">,</span><span class="w"> </span><span class="n">overlapped_DA_sites_to_order</span><span class="p">)</span></code></pre></figure>
+
+<p>Having set up the CDS, now we use <code class="highlighter-rouge">DDRTree</code> to learn the developmental trajectory and then arrange cells on that trajectory with the <code class="highlighter-rouge">oderCells</code> function.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">cds_2to4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">reduceDimension</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">,</span><span class="n">reduction_method</span><span class="o">=</span><span class="s2">"DDRTree"</span><span class="p">,</span><span class="w">
+                                        </span><span class="n">ncenter</span><span class="o">=</span><span class="m">200</span><span class="p">,</span><span class="w">
+                                        </span><span class="n">max_components</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">3</span><span class="p">,</span><span class="w">
+                                        </span><span class="n">maxIter</span><span class="o">=</span><span class="m">1000</span><span class="p">,</span><span class="w">
+                                        </span><span class="n">auto_param_selection</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">FALSE</span><span class="p">,</span><span class="w">
+                                        </span><span class="n">residualModelFormulaStr</span><span class="o">=</span><span class="s2">"~as.numeric(num_genes_expressed)"</span><span class="p">,</span><span class="w">
+                                        </span><span class="p">)</span><span class="w">
+    
+    </span><span class="n">cds_2to4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">orderCells</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">)</span><span class="w">
+
+
+    </span><span class="c1">#This is just a convenience function for plotting to figures side-by-side, since ggplot2 can't do that by default.
+</span><span class="w">    </span><span class="c1">#from http://www.cookbook-r.com/Graphs/Multiple_graphs_on_one_page_(ggplot2)/
+</span><span class="w">    </span><span class="n">multiplot</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="k">function</span><span class="p">(</span><span class="n">...</span><span class="p">,</span><span class="w"> </span><span class="n">plotlist</span><span class="o">=</span><span class="kc">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">file</span><span class="p">,</span><span class="w"> </span><span class="n">cols</span><span class="o">=</span><span class="m">1</span><span class="p">,</span><span class="w"> </span><span class="n">layout</span><span class="o">=</span><span class="kc">NULL</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+      </span><span class="n">library</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span><span class="w">
+      </span><span class="n">plots</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="nf">list</span><span class="p">(</span><span class="n">...</span><span class="p">),</span><span class="w"> </span><span class="n">plotlist</span><span class="p">)</span><span class="w">
+      </span><span class="n">numPlots</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">length</span><span class="p">(</span><span class="n">plots</span><span class="p">)</span><span class="w">
+      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nf">is.null</span><span class="p">(</span><span class="n">layout</span><span class="p">))</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="n">layout</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">matrix</span><span class="p">(</span><span class="n">seq</span><span class="p">(</span><span class="m">1</span><span class="p">,</span><span class="w"> </span><span class="n">cols</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nf">ceiling</span><span class="p">(</span><span class="n">numPlots</span><span class="o">/</span><span class="n">cols</span><span class="p">)),</span><span class="w">
+                        </span><span class="n">ncol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cols</span><span class="p">,</span><span class="w"> </span><span class="n">nrow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">ceiling</span><span class="p">(</span><span class="n">numPlots</span><span class="o">/</span><span class="n">cols</span><span class="p">))</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+     </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">numPlots</span><span class="o">==</span><span class="m">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="n">print</span><span class="p">(</span><span class="n">plots</span><span class="p">[[</span><span class="m">1</span><span class="p">]])</span><span class="w">
+      </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span><span class="w">
+        </span><span class="n">grid.newpage</span><span class="p">()</span><span class="w">
+        </span><span class="n">pushViewport</span><span class="p">(</span><span class="n">viewport</span><span class="p">(</span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">grid.layout</span><span class="p">(</span><span class="n">nrow</span><span class="p">(</span><span class="n">layout</span><span class="p">),</span><span class="w"> </span><span class="n">ncol</span><span class="p">(</span><span class="n">layout</span><span class="p">))))</span><span class="w">
+        </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="m">1</span><span class="o">:</span><span class="n">numPlots</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
+          </span><span class="n">matchidx</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">as.data.frame</span><span class="p">(</span><span class="n">which</span><span class="p">(</span><span class="n">layout</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">arr.ind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">TRUE</span><span class="p">))</span><span class="w">
+    
+          </span><span class="n">print</span><span class="p">(</span><span class="n">plots</span><span class="p">[[</span><span class="n">i</span><span class="p">]],</span><span class="w"> </span><span class="n">vp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">viewport</span><span class="p">(</span><span class="n">layout.pos.row</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matchidx</span><span class="o">$</span><span class="n">row</span><span class="p">,</span><span class="w">
+                                          </span><span class="n">layout.pos.col</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">matchidx</span><span class="o">$</span><span class="n">col</span><span class="p">))</span><span class="w">
+        </span><span class="p">}</span><span class="w">
+      </span><span class="p">}</span><span class="w">
+    </span><span class="p">}</span></code></pre></figure>
+
+<p>Now we can plot the cells on the trajectory to evaluate how the trajectory relates to our germ layer assignments. Please note that either of the axes may be flipped for you which will affect where monocle puts the root state. With the set of parameters we’ve chosen, you can see that at the beginning of pseudotime all the cells are following a single trajectory and most of the cells here are from the “Blastoderm” clusters. However, as pseudotime progresses, we get three branches - each primarily made up of cells from one of the three major germ layers observed at this time point.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">options</span><span class="p">(</span><span class="n">repr.plot.width</span><span class="o">=</span><span class="m">8</span><span class="p">,</span><span class="w"> </span><span class="n">repr.plot.height</span><span class="o">=</span><span class="m">4</span><span class="p">)</span><span class="w">
+    </span><span class="n">p</span><span class="m">1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plot_cell_trajectory</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">,</span><span class="w"> </span><span class="m">1</span><span class="p">,</span><span class="w"> </span><span class="m">2</span><span class="p">,</span><span class="w"> </span><span class="n">color_by</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'Pseudotime'</span><span class="p">,</span><span class="w"> </span><span class="n">show_branch_points</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">F</span><span class="p">,</span><span class="w"> </span><span class="n">cell_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0.5</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w">
+        </span><span class="n">scale_colour_gradient2</span><span class="p">(</span><span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'Pseudotime'</span><span class="p">,</span><span class="w"> </span><span class="n">mid</span><span class="o">=</span><span class="s1">'blue'</span><span class="p">,</span><span class="w"> </span><span class="n">high</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'yellow'</span><span class="p">)</span><span class="w">
+    </span><span class="n">p</span><span class="m">2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">plot_cell_trajectory</span><span class="p">(</span><span class="n">cds_2to4</span><span class="p">,</span><span class="w"> </span><span class="m">1</span><span class="p">,</span><span class="m">2</span><span class="p">,</span><span class="w"> </span><span class="n">color_by</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'germ_layer_name'</span><span class="p">,</span><span class="w"> </span><span class="n">show_branch_points</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">F</span><span class="p">,</span><span class="w"> </span><span class="n">cell_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">0.5</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w">
+           </span><span class="n">scale_color_manual</span><span class="p">(</span><span class="n">values</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">germ_layer_pallet</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">labs</span><span class="w"> </span><span class="p">(</span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'Germ layer'</span><span class="p">)</span><span class="w">
+    </span><span class="n">multiplot</span><span class="p">(</span><span class="n">p</span><span class="m">1</span><span class="p">,</span><span class="n">p</span><span class="m">2</span><span class="p">,</span><span class="n">cols</span><span class="o">=</span><span class="m">2</span><span class="p">)</span></code></pre></figure>
+
+<p><img src="../images/docs_67_0.png" style="max-width: 700px;" /></p>
+
+<p>For more examples of analyses that you can do with monocle, please visit the monocle <a href="http://cole-trapnell-lab.github.io/monocle-release/docs_mobile/">website</a>. If you’d like to interact with the processed data and check out browser tracks for the clusters of cells we’ve identified, please visit our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>. Finally, if you’d like, you can download the raw data <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">here</a>, and we’ve also made the code we used to process the raw data available on <a href="https://github.com/shendurelab/Fly-sciATAC">github</a>.</p>
+
+<figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">sessionInfo</span><span class="p">()</span></code></pre></figure>
+
+<div class="highlighter-rouge"><pre class="highlight"><code>R version 3.2.1 (2015-06-18)
+Platform: x86_64-unknown-linux-gnu (64-bit)
+Running under: CentOS release 6.9 (Final)
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+ [1] grid      splines   stats4    parallel  stats     graphics  grDevices
+ [8] utils     datasets  methods   base     
+
+other attached packages:
+ [1] monocle_2.5.3       DDRTree_0.1.4       irlba_2.2.1        
+ [4] VGAM_1.0-3          ggplot2_2.2.1       Biobase_2.30.0     
+ [7] BiocGenerics_0.16.1 densityClust_0.3    Rtsne_0.13         
+[10] gplots_3.0.1        proxy_0.4-16        Matrix_1.2-10      
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_0.12.11           lattice_0.20-35        gtools_3.5.0          
+ [4] assertthat_0.2.0       digest_0.6.12          IRdisplay_0.4.4       
+ [7] slam_0.1-35            R6_2.2.2               plyr_1.8.4            
+[10] repr_0.12.0            qlcMatrix_0.9.5        evaluate_0.10.1       
+[13] rlang_0.1.1            lazyeval_0.2.0         uuid_0.1-2            
+[16] data.table_1.10.4      gdata_2.18.0           combinat_0.0-8        
+[19] labeling_0.3           stringr_1.2.0          igraph_1.1.2          
+[22] pheatmap_1.0.8         munsell_0.4.3          pkgconfig_2.0.1       
+[25] tibble_1.3.3           matrixStats_0.50.1     crayon_1.3.2          
+[28] dplyr_0.7.1            bitops_1.0-6           jsonlite_1.5          
+[31] gtable_0.2.0           magrittr_1.5           scales_0.4.1          
+[34] KernSmooth_2.23-15     stringi_1.1.5          reshape2_1.4.2        
+[37] bindrcpp_0.2           limma_3.26.9           IRkernel_0.8.6.9000   
+[40] fastICA_1.2-1          RColorBrewer_1.1-2     tools_3.2.1           
+[43] Cairo_1.5-9            glue_1.1.1             HSMMSingleCell_0.104.0
+[46] colorspace_1.3-2       cluster_2.0.6          caTools_1.17.1        
+[49] pbdZMQ_0.2-6           bindr_0.1             
+</code></pre>
+</div>
+
+
+</div> <!-- /container -->
+
+{% include footer.html %}
+
+</body>
+
+</html>

@@ -55,7 +55,7 @@ tags: [fly, data, atlas, analysis]
 <figure class="highlight"><pre><code class="language-bash" data-lang="bash">curl -O https://cran.r-project.org/src/contrib/Archive/irlba/irlba_1.0.3.tar.gz
 mkdir ./old_irlba
 R CMD INSTALL -l ./old_irlba irlba_1.0.3.tar.gz
-curl -O http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/monocle_2.5.3.tar.gz
+curl -O http://atlas.gs.washington.edu/download/fly-atac/monocle_2.5.3.tar.gz
 R CMD INSTALL monocle_2.5.3.tar.gz
 curl -O https://cran.rstudio.com/src/contrib/Archive/DDRTree/DDRTree_0.1.4.tar.gz
 R CMD INSTALL DDRTree_0.1.4.tar.gz</code></pre></figure>
@@ -109,12 +109,12 @@ loaded via a namespace (and not attached):
 <p><a id="usecase1"></a></p>
 <h2 id="use-case-1-id-clades-with-lsi">Use case 1: ID clades with ‘LSI’</h2>
 
-<p>We have found it convenient to store the data as a sparse, binary matrix of genomic loci x cells. Below we will walk you through an analysis where individual cells have been scored for insertions in 2kb windows throughout the genome. Note that if you want to go back to the raw sequencing data (FASTQ files), they are available at the Gene Expression Omnibus under accession code <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">GSE101581</a>. We have made tools for manipulating these files available on <a href="https://github.com/shendurelab/Fly-sciATAC">github</a>. Alternatively, we have a great number of resources for interacting with the data at our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>.</p>
+<p>We have found it convenient to store the data as a sparse, binary matrix of genomic loci x cells. Below we will walk you through an analysis where individual cells have been scored for insertions in 2kb windows throughout the genome. Note that if you want to go back to the raw sequencing data (FASTQ files), they are available at the Gene Expression Omnibus under accession code <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">GSE101581</a>. We have made tools for manipulating these files available on <a href="https://github.com/shendurelab/fly-atac/">github</a>. Alternatively, we have a great number of resources for interacting with the data at our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>.</p>
 
 <p>First, we need to download the binary matrix and load it into R.</p>
 
 <figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
     </span><span class="n">flies_6to8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"6to8.2kbmatrix.sparse.binary.rds"</span><span class="p">)</span></code></pre></figure>
 
@@ -218,7 +218,7 @@ chr2L_2000_4000                                    .
 <p>Having identified large clades of cells that were consistent with the development of germ layers during embryogenesis, we were able to identify peaks of chromatin accessibility in each clade after “<em>in silico</em> sorting” the cells assigned to each cluster. We next sought to robustly identify smaller clusters of cells that might be more consistent with individual cell types so that we could learn about the individual regulatory elements that govern distinct cell states. To do so, we generated a master list of summits of accessibiity identified in each of the clades across the three time points and then created a matrix of sites by cells (similar to the last use case).</p>
 
 <figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.summitmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/6to8.summitmatrix.sparse.binary.rds"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.summitmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
     </span><span class="n">fly_summits_6to8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"6to8.summitmatrix.sparse.binary.rds"</span><span class="p">)</span><span class="w">
     </span><span class="nf">dim</span><span class="p">(</span><span class="n">fly_summits_6to8</span><span class="p">)</span><span class="w">
@@ -333,7 +333,7 @@ the length of the distance: 25144686
 <p>Finally, we plot the t-SNE plots and show how the points are related to our original LSI clustering, the assigned sex of each cell (you’ll need to download an additional file for this), and curren density peak clusters.</p>
 
 <figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.xycalls.txt"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/6to8.xycalls.txt"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.xycalls.txt"</span><span class="p">)</span><span class="w">
     </span><span class="n">sexcolors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s2">"6to8.xycalls.txt"</span><span class="p">)</span><span class="w">
 
@@ -377,11 +377,11 @@ the length of the distance: 25144686
         </span><span class="n">library</span><span class="p">(</span><span class="n">monocle</span><span class="p">)</span><span class="w">
     </span><span class="p">})</span><span class="w">
     </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/monocle_patch.R"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/monocle_patch.R"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"monocle_patch.R"</span><span class="p">)</span><span class="w">
     </span><span class="n">source</span><span class="p">(</span><span class="s2">"monocle_patch.R"</span><span class="p">)</span><span class="w">
     </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/6to8.read.report.txt"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/6to8.read.report.txt"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"6to8.read.report.txt"</span><span class="p">)</span><span class="w">
     </span><span class="n">readcounts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">read.table</span><span class="p">(</span><span class="s2">"6to8.read.report.txt"</span><span class="p">,</span><span class="n">header</span><span class="o">=</span><span class="nb">T</span><span class="p">)</span></code></pre></figure>
 
@@ -816,7 +816,7 @@ We next want to load our site x cell matrix into a Cell Data Set (‘CDS’), a 
 <p>To run through this section, we need several files, so we’ll download a tarball and unpack it before proceeding.</p>
 
 <figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">download.file</span><span class="p">(</span><span class="w">
-        </span><span class="s2">"http://krishna.gs.washington.edu/content/members/cusanovich/fly_embryogenesis/updated_data/vignette/2to4_files.tar.gz"</span><span class="p">,</span><span class="w">
+        </span><span class="s2">"http://atlas.gs.washington.edu/download/fly-atac/2to4_files.tar.gz"</span><span class="p">,</span><span class="w">
         </span><span class="n">destfile</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2to4_files.tar.gz"</span><span class="p">)</span><span class="w">
     </span><span class="n">system</span><span class="p">(</span><span class="s2">"tar -xzf 2to4_files.tar.gz"</span><span class="p">)</span><span class="w">
     </span><span class="n">cds_2to4</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">readRDS</span><span class="p">(</span><span class="s2">"./2to4_files/cds_2to4_aggregated.rds"</span><span class="p">)</span><span class="w">
@@ -911,7 +911,7 @@ We next want to load our site x cell matrix into a Cell Data Set (‘CDS’), a 
 
 <p><img src="../images/docs_67_0.png" style="max-width: 700px;" /></p>
 
-<p>For more examples of analyses that you can do with monocle, please visit the monocle <a href="http://cole-trapnell-lab.github.io/monocle-release/docs_mobile/">website</a>. If you’d like to interact with the processed data and check out browser tracks for the clusters of cells we’ve identified, please visit our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>. Finally, if you’d like, you can download the raw data <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">here</a>, and we’ve also made the code we used to process the raw data available on <a href="https://github.com/shendurelab/Fly-sciATAC">github</a>.</p>
+<p>For more examples of analyses that you can do with monocle, please visit the monocle <a href="http://cole-trapnell-lab.github.io/monocle-release/docs_mobile/">website</a>. If you’d like to interact with the processed data and check out browser tracks for the clusters of cells we’ve identified, please visit our companion <a href="http://shiny.furlonglab.embl.de/scATACseqBrowser/">site</a>. Finally, if you’d like, you can download the raw data <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE101581">here</a>, and we’ve also made the code we used to process the raw data available on <a href="https://github.com/shendurelab/fly-atac/">github</a>.</p>
 
 <figure class="highlight"><pre><code class="language-r" data-lang="r"><span class="w">    </span><span class="n">sessionInfo</span><span class="p">()</span></code></pre></figure>
 

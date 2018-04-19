@@ -15,7 +15,7 @@ if(length(bkgd.ind) > 0){
 	nobkgdmat = report2
 }
 cellcall = Mclust(data.frame(log10(nobkgdmat$Total)),G=2)
-if(cellfloor == "mclust"){
+if(cellfloor == "auto"){
   cellfloor = min(nobkgdmat[which(cellcall$classification == 2 & cellcall$uncertainty < 0.05),2])
 }else{
   cellfloor = as.numeric(cellfloor)

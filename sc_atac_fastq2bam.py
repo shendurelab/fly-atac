@@ -25,12 +25,12 @@ except OSError:
 
 print "Fixing barcodes..."
 scriptdir = os.path.dirname(os.path.abspath(__file__))
-splitter = 'python ' + scriptdir + 'sc_atac_10bpbarcode_split.py -1 ' + args.read1 + ' -2 ' + args.read2 + ' -O1 ' + args.outdir + args.prefix + '.split.1.fq -O2 ' + args.outdir + args.prefix + '.split.2.fq -L ' + args.outdir + args.prefix + '.split.log -Z -X'
+splitter = 'python ' + scriptdir + '/sc_atac_10bpbarcode_split.py -1 ' + args.read1 + ' -2 ' + args.read2 + ' -O1 ' + args.outdir + args.prefix + '.split.1.fq -O2 ' + args.outdir + args.prefix + '.split.2.fq -L ' + args.outdir + args.prefix + '.split.log -Z -X'
 
 submitter(splitter)
 
 print "Trimming adapters..."
-trimmer = 'java -Xmx1G -jar ' + scriptdir + 'trimmomatic-0.32.jar PE ' + args.outdir + args.prefix + '.split.1.fq.gz ' + args.outdir + args.prefix + '.split.2.fq.gz ' + args.outdir + args.prefix + '.split.1.trimmed.paired.fastq.gz ' + args.outdir + args.prefix + '.split.1.trimmed.unpaired.fastq.gz ' + args.outdir + args.prefix + '.split.2.trimmed.paired.fastq.gz ' + args.outdir + args.prefix + '.split.2.trimmed.unpaired.fastq.gz ILLUMINACLIP:' + scriptdir + 'NexteraPE-PE.fa:2:30:10:1:true TRAILING:3 SLIDINGWINDOW:4:10 MINLEN:20 2> ' + args.outdir + args.prefix + '.split.trimmomatic.log'
+trimmer = 'java -Xmx1G -jar ' + scriptdir + '/trimmomatic-0.32.jar PE ' + args.outdir + args.prefix + '.split.1.fq.gz ' + args.outdir + args.prefix + '.split.2.fq.gz ' + args.outdir + args.prefix + '.split.1.trimmed.paired.fastq.gz ' + args.outdir + args.prefix + '.split.1.trimmed.unpaired.fastq.gz ' + args.outdir + args.prefix + '.split.2.trimmed.paired.fastq.gz ' + args.outdir + args.prefix + '.split.2.trimmed.unpaired.fastq.gz ILLUMINACLIP:' + scriptdir + '/NexteraPE-PE.fa:2:30:10:1:true TRAILING:3 SLIDINGWINDOW:4:10 MINLEN:20 2> ' + args.outdir + args.prefix + '.split.trimmomatic.log'
 submitter(trimmer)
 
 print "Cleaning up..."
@@ -42,6 +42,6 @@ mapper = "bowtie2 -p 8 -X 2000 -3 1 -x " + args.genome + " -1 $1.split.1.trimmed
 submitter(mapper)
 
 print "Deduplicating reads..."
-dedup = "python " + scriptdir + "sc_atac_true_dedup.py $1.split.q10.sort.bam $1.true.nodups.bam"
+dedup = "python " + scriptdir + "/sc_atac_true_dedup.py $1.split.q10.sort.bam $1.true.nodups.bam"
 submitter(dedup)
 

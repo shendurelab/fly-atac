@@ -2,7 +2,7 @@ import sys
 import pysam
 
 if len(sys.argv) != 6:
-	sys.exit('Usage: python sc_atac_window_counter.py [Input Bam file] [Input Index table or "NoTags"] [Window BED] [Output file] [Include sites with no reads? (True/False)]')
+	sys.exit('Usage: python sc_atac_window_counter.py [Input Bam file] [Input Index table] [Window BED] [Output file] [Include sites with no reads? (True/False)]')
 
 inbam = sys.argv[1]
 indextable = sys.argv[2]
@@ -10,12 +10,9 @@ type1bed = sys.argv[3]
 outfile = sys.argv[4]
 includezeroes = sys.argv[5]
 
-if indextable != 'NoTags':
-	descer = open(indextable,'r')
-	cells = [x.strip().split()[0] for x in descer.readlines() if '@' not in x]
-	descer.close()
-else:
-	cells = ['Undefined']
+descer = open(indextable,'r')
+cells = [x.strip().split()[0] for x in descer.readlines() if '@' not in x]
+descer.close()
 
 cellsdic = {}
 for x,cell in enumerate(cells):
@@ -64,6 +61,6 @@ def counter(bedtuple,outsfile,first=False):
 
 
 outmat = open(outfile,'w')
-print "Counting DHS reads..."
-counter(rec1list,outmat,writebinary,first=True)
+print "Counting window reads for each cell..."
+counter(rec1list,outmat,first=True)
 outmat.close()

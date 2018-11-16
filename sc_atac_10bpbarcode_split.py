@@ -38,6 +38,7 @@ def editcheck(barc,reflist):
 				runnerup_ed = winner_ed
 				winner = barcode
 				winner_ed = curred
+			if curred > winner_ed & curred < runnerup_ed:
 		if winner_ed > 3:
 			winner = '_CTF' + '_'*(len(barc)-4)
 		if runnerup_ed - winner_ed < 2:

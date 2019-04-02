@@ -23,7 +23,7 @@ for refchrom in refs:
 			fragstart = str(read.pos)
 			fragend = str(read.pos + read.tlen)
 		try:
-			readdic[readname + fragstart + fragend]
+			readdic[readname + fragstart + fragend + read.is_read1]
 		except KeyError:
-			readdic[readname + fragstart + fragend] = read
+			readdic[readname + fragstart + fragend + read.is_read1] = read
 			readsout.write(read)
